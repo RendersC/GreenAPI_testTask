@@ -1,0 +1,168 @@
+import type { ParsedMessage } from '@/lib/notifications'
+import { phoneToChatId } from '@/lib/phone'
+
+export type MessageStatus = 'sending' | 'sent' | 'failed'
+
+export interface Message {
+  /** Local id for optimistic messages, GREEN-API idMessage otherwise. */
+  id: string
+  idMessage?: string
+  direction: 'in' | 'out'
+  text: string
+  timestamp: number
+  status?: MessageStatus
+}
+
+export interface Chat {
+  /** chatId used for sending: "79001234567@c.us" or a numeric Telegram id. */
+  id: string
+  /** Other chatIds GREEN-API uses for the same person (e.g. Telegram user id). */
+  aliases: string[]
+  phone?: string
+  title?: string
+  messages: Message[]
+  unread: number
+  updatedAt: number
+}
+
+export interface ChatsState {
+  chats: Chat[]
+  activeChatId: string | null
+  /** Unknown private chats are created only from messages newer than this. */
+  since: number
+}
+
+export type ChatsAction =
+  | { type: 'createChat'; phone: string }
+  | { type: 'selectChat'; chatId: string | null }
+  | { type: 'sendStarted'; chatId: string; localId: string; text: string }
+  | { type: 'sendSucceeded'; chatId: string; localId: string; idMessage: string }
+  | { type: 'sendFailed'; chatId: string; localId: string }
+  | { type: 'retry'; chatId: string; localId: string }
+  | { type: 'received'; message: ParsedMessage }
+
+export function createInitialState(): ChatsState {
+  return { chats: [], activeChatId: null, since: Date.now() }
+}
+
+function updateChat(state: ChatsState, chatId: string, fn: (chat: Chat) => Chat): ChatsState {
+  return { ...state, chats: state.chats.map((chat) => (chat.id === chatId ? fn(chat) : chat)) }
+}
+
+function updateMessage(chat: Chat, localId: string, patch: Partial<Message>): Chat {
+  return { ...chat, messages: chat.messages.map((m) => (m.id === localId ? { ...m, ...patch } : m)) }
+}
+
+function findChat(chats: Chat[], { chatId, phone, idMessage }: ParsedMessage): Chat | undefined {
+  return (
+    chats.find((c) => c.id === chatId || c.aliases.includes(chatId)) ??
+    (phone ? chats.find((c) => c.phone === phone) : undefined) ??
+    chats.find((c) => c.messages.some((m) => m.idMessage === idMessage))
+  )
+}
+
+function applyReceived(state: ChatsState, message: ParsedMessage): ChatsState {
+  const existing = findChat(state.chats, message)
+
+  if (!existing) {
+    const isPrivate = !message.chatType || message.chatType === 'user'
+    if (message.direction === 'out' || !isPrivate || message.timestamp < state.since) return state
+  }
+
+  const chat: Chat = existing ?? {
+    id: message.chatId,
+    aliases: [],
+    phone: message.phone,
+    title: message.chatName,
+    messages: [],
+    unread: 0,
+    updatedAt: message.timestamp,
+  }
+
+  const aliases =
+    chat.id === message.chatId || chat.aliases.includes(message.chatId)
+      ? chat.aliases
+      : [...chat.aliases, message.chatId]
+
+  const duplicate = chat.messages.some((m) => m.idMessage === message.idMessage)
+  const isActive = state.activeChatId === chat.id
+
+  const next: Chat = {
+    ...chat,
+    aliases,
+    phone: chat.phone ?? message.phone,
+    title: chat.title ?? (message.direction === 'in' ? message.chatName : undefined),
+    messages: duplicate
+      ? chat.messages
+      : [
+          ...chat.messages,
+          {
+            id: message.idMessage,
+            idMessage: message.idMessage,
+            direction: message.direction,
+            text: message.text,
+            timestamp: message.timestamp,
+            status: message.direction === 'out' ? 'sent' : undefined,
+          },
+        ],
+    unread: duplicate || isActive || message.direction === 'out' ? chat.unread : chat.unread + 1,
+    updatedAt: duplicate ? chat.updatedAt : Math.max(chat.updatedAt, message.timestamp),
+  }
+
+  return {
+    ...state,
+    chats: existing ? state.chats.map((c) => (c.id === chat.id ? next : c)) : [next, ...state.chats],
+  }
+}
+
+export function chatsReducer(state: ChatsState, action: ChatsAction): ChatsState {
+  switch (action.type) {
+    case 'createChat': {
+      const id = phoneToChatId(action.phone)
+      const exists = state.chats.some((c) => c.id === id || c.phone === action.phone)
+      const chats = exists
+        ? state.chats
+        : [
+            { id, aliases: [], phone: action.phone, messages: [], unread: 0, updatedAt: Date.now() },
+            ...state.chats,
+          ]
+      const target = chats.find((c) => c.id === id || c.phone === action.phone)!
+      return { ...state, chats, activeChatId: target.id }
+    }
+
+    case 'selectChat':
+      return action.chatId
+        ? { ...updateChat(state, action.chatId, (c) => ({ ...c, unread: 0 })), activeChatId: action.chatId }
+        : { ...state, activeChatId: null }
+
+    case 'sendStarted':
+      return updateChat(state, action.chatId, (chat) => ({
+        ...chat,
+        messages: [
+          ...chat.messages,
+          { id: action.localId, direction: 'out', text: action.text, timestamp: Date.now(), status: 'sending' },
+        ],
+        updatedAt: Date.now(),
+      }))
+
+    case 'sendSucceeded':
+      return updateChat(state, action.chatId, (chat) => {
+        // The outgoing webhook may already have delivered this message.
+        const echoed = chat.messages.some((m) => m.idMessage === action.idMessage && m.id !== action.localId)
+        return echoed
+          ? { ...chat, messages: chat.messages.filter((m) => m.id !== action.localId) }
+          : updateMessage(chat, action.localId, { idMessage: action.idMessage, status: 'sent' })
+      })
+
+    case 'sendFailed':
+      return updateChat(state, action.chatId, (chat) => updateMessage(chat, action.localId, { status: 'failed' }))
+
+    case 'retry':
+      return updateChat(state, action.chatId, (chat) =>
+        updateMessage(chat, action.localId, { status: 'sending', timestamp: Date.now() }),
+      )
+
+    case 'received':
+      return applyReceived(state, action.message)
+  }
+}
