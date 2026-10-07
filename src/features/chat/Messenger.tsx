@@ -2,8 +2,8 @@ import { useEffect } from 'react'
 import { toast } from 'sonner'
 
 import { cn } from '@/lib/utils'
-import { useChatStore } from '@/store/chatStore'
-import { useSession } from '@/store/session'
+import { useChatStore } from '@/store/useChatStore'
+import { useSession } from '@/store/useSession'
 
 import { ChatSidebar } from './ChatSidebar'
 import { ChatWindow } from './ChatWindow'

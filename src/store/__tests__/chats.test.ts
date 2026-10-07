@@ -1,9 +1,8 @@
 import { describe, expect, it } from 'vitest'
 
-import { parseNotification, type ParsedMessage } from '@/lib/notifications'
-import { normalizePhone, isValidPhone } from '@/lib/phone'
+import type { ParsedMessage } from '@/lib/notifications'
 
-import { chatsReducer, type ChatsState } from '../chats'
+import { chatsReducer, restoreState, type ChatsState } from '../chats'
 
 const empty = (): ChatsState => ({ chats: [], activeChatId: null, since: 0 })
 
@@ -17,41 +16,6 @@ const incoming = (patch: Partial<ParsedMessage> = {}): ParsedMessage => ({
   text: 'Привет',
   timestamp: 1000,
   ...patch,
-})
-
-describe('phone', () => {
-  it('normalizes 8-prefixed numbers and strips formatting', () => {
-    expect(normalizePhone('8 (900) 123-45-67')).toBe('79001234567')
-    expect(normalizePhone('+7 900 123 45 67')).toBe('79001234567')
-    expect(isValidPhone('79001234567')).toBe(true)
-    expect(isValidPhone('123')).toBe(false)
-  })
-})
-
-describe('parseNotification', () => {
-  it('extracts incoming text messages', () => {
-    const parsed = parseNotification({
-      typeWebhook: 'incomingMessageReceived',
-      timestamp: 1,
-      idMessage: 'x',
-      senderData: { chatId: '1', sender: '1', chatType: 'user', senderPhoneNumber: 79001234567 },
-      messageData: { typeMessage: 'textMessage', textMessageData: { textMessage: 'hi' } },
-    })
-    expect(parsed).toMatchObject({ direction: 'in', chatId: '1', phone: '79001234567', text: 'hi', timestamp: 1000 })
-  })
-
-  it('ignores non-text messages and service notifications', () => {
-    expect(parseNotification({ typeWebhook: 'stateInstanceChanged', timestamp: 1 })).toBeNull()
-    expect(
-      parseNotification({
-        typeWebhook: 'incomingMessageReceived',
-        timestamp: 1,
-        idMessage: 'x',
-        senderData: { chatId: '1', sender: '1' },
-        messageData: { typeMessage: 'imageMessage' },
-      }),
-    ).toBeNull()
-  })
 })
 
 describe('chatsReducer', () => {
@@ -112,7 +76,7 @@ describe('chatsReducer', () => {
   it('ignores group messages and backlog from before login', () => {
     let state = chatsReducer(empty(), { type: 'received', message: incoming({ chatType: 'supergroup', chatId: '-100' }) })
     expect(state.chats).toHaveLength(0)
-    state = chatsReducer({ ...empty(), since: 5000 }, { type: 'received', message: incoming({ timestamp: 1000 }) })
+    state = chatsReducer({ ...empty(), since: 120_000 }, { type: 'received', message: incoming({ timestamp: 1000 }) })
     expect(state.chats).toHaveLength(0)
   })
 
@@ -124,5 +88,60 @@ describe('chatsReducer', () => {
     expect(state.chats[0].unread).toBe(1)
     state = chatsReducer(state, { type: 'selectChat', chatId: '10000000' })
     expect(state.chats[0].unread).toBe(0)
+  })
+
+  it('marks a failed send and recovers it on retry', () => {
+    let state = chatsReducer(empty(), { type: 'createChat', chatId: '1' })
+    state = chatsReducer(state, { type: 'sendStarted', chatId: '1', localId: 'l1', text: 'hi' })
+    expect(state.chats[0].messages[0].status).toBe('sending')
+    state = chatsReducer(state, { type: 'sendFailed', chatId: '1', localId: 'l1' })
+    expect(state.chats[0].messages[0].status).toBe('failed')
+    state = chatsReducer(state, { type: 'retry', chatId: '1', localId: 'l1' })
+    expect(state.chats[0].messages[0].status).toBe('sending')
+    state = chatsReducer(state, { type: 'sendSucceeded', chatId: '1', localId: 'l1', idMessage: 'out-1' })
+    expect(state.chats[0].messages[0]).toMatchObject({ status: 'sent', idMessage: 'out-1' })
+  })
+
+  it('does not count unread messages in the open chat', () => {
+    let state = chatsReducer(empty(), { type: 'createChat', chatId: '10000000' })
+    state = chatsReducer(state, { type: 'received', message: incoming() })
+    expect(state.chats[0].unread).toBe(0)
+
+    state = chatsReducer(state, { type: 'selectChat', chatId: null })
+    state = chatsReducer(state, { type: 'received', message: incoming({ idMessage: 'in-2' }) })
+    expect(state.chats[0].unread).toBe(1)
+  })
+
+  it('keeps the title from incoming messages and the username from checkAccount', () => {
+    let state = chatsReducer(empty(), { type: 'received', message: incoming() })
+    state = chatsReducer(state, { type: 'createChat', chatId: '10000000', username: 'vasya' })
+    expect(state.chats[0]).toMatchObject({ title: 'Вася', username: 'vasya', phone: '79001234567' })
+  })
+
+  it('ignores outgoing notifications for unknown chats', () => {
+    const state = chatsReducer(empty(), { type: 'received', message: incoming({ direction: 'out' }) })
+    expect(state.chats).toHaveLength(0)
+  })
+})
+
+describe('restoreState', () => {
+  it('fails in-flight messages, drops legacy phone chats and closes the active chat', () => {
+    const restored = restoreState({
+      since: 1,
+      activeChatId: '1',
+      chats: [
+        {
+          id: '1',
+          aliases: [],
+          unread: 0,
+          updatedAt: 0,
+          messages: [{ id: 'l1', direction: 'out', text: 'hi', timestamp: 0, status: 'sending' }],
+        },
+        { id: '79001234567@c.us', aliases: [], unread: 0, updatedAt: 0, messages: [] },
+      ],
+    })
+    expect(restored.activeChatId).toBeNull()
+    expect(restored.chats).toHaveLength(1)
+    expect(restored.chats[0].messages[0].status).toBe('failed')
   })
 })

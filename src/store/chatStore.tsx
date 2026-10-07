@@ -1,39 +1,20 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useReducer, type ReactNode } from 'react'
-
+import { useCallback, useEffect, useMemo, useReducer, type ReactNode } from 'react'
 import { toast } from 'sonner'
 
 import { GreenApiError, sendMessage as apiSendMessage } from '@/api/greenApi'
-import { useNotificationPolling, type PollingStatus } from '@/hooks/useNotificationPolling'
+import { useNotificationPolling } from '@/hooks/useNotificationPolling'
 import type { ParsedMessage } from '@/lib/notifications'
 import { loadJson, saveJson } from '@/lib/storage'
 import type { Credentials } from '@/types/greenApi'
 
-import { chatsReducer, createInitialState, type Chat, type ChatsState } from './chats'
-
-interface ChatStoreValue {
-  chats: Chat[]
-  activeChat: Chat | null
-  pollingStatus: PollingStatus
-  createChat: (chat: { chatId: string; phone?: string; username?: string }) => void
-  selectChat: (chatId: string | null) => void
-  sendMessage: (chatId: string, text: string) => Promise<void>
-  retryMessage: (chatId: string, localId: string) => Promise<void>
-}
-
-const ChatStoreContext = createContext<ChatStoreValue | null>(null)
+import { chatsReducer, createInitialState, restoreState, type ChatsState } from './chats'
+import { ChatStoreContext, type ChatStoreValue } from './useChatStore'
 
 const storageKey = (idInstance: string) => `greenapi-chat:chats:${idInstance}`
 
 function loadState(idInstance: string): ChatsState {
   const saved = loadJson<ChatsState>(storageKey(idInstance))
-  if (!saved) return createInitialState()
-  // Messages that were in flight when the page closed are unknown now.
-  // Chats keyed by "phone@c.us" come from an older version: Telegram drops sends to them.
-  const chats = saved.chats.filter((chat) => !chat.id.endsWith('@c.us')).map((chat) => ({
-    ...chat,
-    messages: chat.messages.map((m) => (m.status === 'sending' ? { ...m, status: 'failed' as const } : m)),
-  }))
-  return { ...saved, chats, activeChatId: null }
+  return saved ? restoreState(saved) : createInitialState()
 }
 
 export function ChatStoreProvider({ credentials, children }: { credentials: Credentials; children: ReactNode }) {
@@ -92,10 +73,4 @@ export function ChatStoreProvider({ credentials, children }: { credentials: Cred
   }, [state, pollingStatus, sendMessage, retryMessage])
 
   return <ChatStoreContext.Provider value={value}>{children}</ChatStoreContext.Provider>
-}
-
-export function useChatStore() {
-  const context = useContext(ChatStoreContext)
-  if (!context) throw new Error('useChatStore must be used inside ChatStoreProvider')
-  return context
 }

@@ -41,8 +41,23 @@ export type ChatsAction =
   | { type: 'retry'; chatId: string; localId: string }
   | { type: 'received'; message: ParsedMessage }
 
+const BACKLOG_GRACE_MS = 60_000
+
 export function createInitialState(): ChatsState {
   return { chats: [], activeChatId: null, since: Date.now() }
+}
+
+/** Prepares a state saved in a previous session for use. */
+export function restoreState(saved: ChatsState): ChatsState {
+  const chats = saved.chats
+    // Chats keyed by "phone@c.us" come from an older version: Telegram silently drops sends to them.
+    .filter((chat) => !chat.id.endsWith('@c.us'))
+    .map((chat) => ({
+      ...chat,
+      // Whether in-flight messages reached GREEN-API before the page closed is unknown.
+      messages: chat.messages.map((m) => (m.status === 'sending' ? { ...m, status: 'failed' as const } : m)),
+    }))
+  return { ...saved, chats, activeChatId: null }
 }
 
 function updateChat(state: ChatsState, chatId: string, fn: (chat: Chat) => Chat): ChatsState {
@@ -66,7 +81,9 @@ function applyReceived(state: ChatsState, message: ParsedMessage): ChatsState {
 
   if (!existing) {
     const isPrivate = !message.chatType || message.chatType === 'user'
-    if (message.direction === 'out' || !isPrivate || message.timestamp < state.since) return state
+    // Webhook timestamps have second precision and come from another clock, hence the grace period.
+    const isBacklog = message.timestamp < state.since - BACKLOG_GRACE_MS
+    if (message.direction === 'out' || !isPrivate || isBacklog) return state
   }
 
   const chat: Chat = existing ?? {

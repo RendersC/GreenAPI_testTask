@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { cn } from '@/lib/utils'
-import { useSession } from '@/store/session'
+import { useSession } from '@/store/useSession'
 import type { InstanceState } from '@/types/greenApi'
 
 const STATE_ERRORS: Partial<Record<InstanceState, string>> = {
@@ -44,6 +44,10 @@ export function LoginScreen() {
     }
     if (!credentials.idInstance || !credentials.apiTokenInstance) {
       setError('Заполните idInstance и apiTokenInstance')
+      return
+    }
+    if (!/^\d+$/.test(credentials.idInstance)) {
+      setError('idInstance состоит только из цифр')
       return
     }
 

@@ -16,8 +16,8 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { isValidPhone, normalizePhone } from '@/lib/phone'
-import { useChatStore } from '@/store/chatStore'
-import { useSession } from '@/store/session'
+import { useChatStore } from '@/store/useChatStore'
+import { useSession } from '@/store/useSession'
 
 const USERNAME_RE = /^@?([a-zA-Z][a-zA-Z0-9_]{3,31})$/
 

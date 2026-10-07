@@ -8,7 +8,7 @@ import { PromptInput } from '@/components/ui/prompt-input'
 import { chatTitle, formatDayLabel, formatTime, isSameDay } from '@/lib/format'
 import { formatPhone } from '@/lib/phone'
 import { cn } from '@/lib/utils'
-import { useChatStore } from '@/store/chatStore'
+import { useChatStore } from '@/store/useChatStore'
 import type { Chat, Message } from '@/store/chats'
 
 import { ChatAvatar } from './ChatAvatar'
@@ -50,6 +50,9 @@ function MessageList({ chat }: { chat: Chat }) {
   return (
     <div
       ref={containerRef}
+      role="log"
+      aria-live="polite"
+      aria-label="Сообщения"
       className="flex-1 overflow-y-auto px-3 py-4 sm:px-6"
       onScroll={(e) => {
         const el = e.currentTarget

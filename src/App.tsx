@@ -4,7 +4,8 @@ import { Toaster } from '@/components/ui/sonner'
 import { LoginScreen } from '@/features/auth/LoginScreen'
 import { Messenger } from '@/features/chat/Messenger'
 import { ChatStoreProvider } from '@/store/chatStore'
-import { SessionProvider, useSession } from '@/store/session'
+import { SessionProvider } from '@/store/session'
+import { useSession } from '@/store/useSession'
 
 function Screens() {
   const { credentials } = useSession()
