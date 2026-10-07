@@ -67,7 +67,8 @@ export function useNotificationPolling(
             setStatus('unauthorized')
             return
           }
-          setStatus('offline')
+          // 429 is GREEN-API rate limiting, not a lost connection: just back off.
+          if (!(error instanceof GreenApiError && error.status === 429)) setStatus('offline')
           await wait(RETRY_DELAY_MS, signal)
         }
       }
