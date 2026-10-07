@@ -31,7 +31,7 @@ function describeStatus(status: number): string {
     case 429:
       return 'Слишком много запросов, попробуйте позже'
     case 466:
-      return 'Исчерпан лимит тарифа GREEN-API'
+      return 'Исчерпан лимит тарифа GREEN-API: на бесплатном тарифе можно писать не более 3 разным собеседникам в месяц'
     default:
       return status >= 500 ? 'Сервер GREEN-API недоступен' : `Ошибка запроса (${status})`
   }
