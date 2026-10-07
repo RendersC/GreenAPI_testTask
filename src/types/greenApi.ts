@@ -16,6 +16,13 @@ export interface StateInstanceResponse {
   stateInstance: InstanceState
 }
 
+export interface CheckAccountResponse {
+  exist: boolean
+  chatId: string
+  username?: string
+  phoneNumber?: number
+}
+
 export interface SendMessageResponse {
   idMessage: string
 }

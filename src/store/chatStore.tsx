@@ -14,7 +14,7 @@ interface ChatStoreValue {
   chats: Chat[]
   activeChat: Chat | null
   pollingStatus: PollingStatus
-  createChat: (phone: string) => void
+  createChat: (chat: { chatId: string; phone?: string; username?: string }) => void
   selectChat: (chatId: string | null) => void
   sendMessage: (chatId: string, text: string) => Promise<void>
   retryMessage: (chatId: string, localId: string) => Promise<void>
@@ -28,7 +28,8 @@ function loadState(idInstance: string): ChatsState {
   const saved = loadJson<ChatsState>(storageKey(idInstance))
   if (!saved) return createInitialState()
   // Messages that were in flight when the page closed are unknown now.
-  const chats = saved.chats.map((chat) => ({
+  // Chats keyed by "phone@c.us" come from an older version: Telegram drops sends to them.
+  const chats = saved.chats.filter((chat) => !chat.id.endsWith('@c.us')).map((chat) => ({
     ...chat,
     messages: chat.messages.map((m) => (m.status === 'sending' ? { ...m, status: 'failed' as const } : m)),
   }))
@@ -83,7 +84,7 @@ export function ChatStoreProvider({ credentials, children }: { credentials: Cred
       chats,
       activeChat: chats.find((c) => c.id === state.activeChatId) ?? null,
       pollingStatus,
-      createChat: (phone) => dispatch({ type: 'createChat', phone }),
+      createChat: (chat) => dispatch({ type: 'createChat', ...chat }),
       selectChat: (chatId) => dispatch({ type: 'selectChat', chatId }),
       sendMessage,
       retryMessage,

@@ -1,4 +1,5 @@
 import type {
+  CheckAccountResponse,
   Credentials,
   Notification,
   SendMessageResponse,
@@ -59,6 +60,15 @@ export function getStateInstance(credentials: Credentials, signal?: AbortSignal)
   return request<StateInstanceResponse>(buildUrl(credentials, 'getStateInstance'), { signal })
 }
 
+/** Resolves a phone number or @username to the Telegram chatId that sending methods expect. */
+export function checkAccount(credentials: Credentials, query: { phoneNumber: number } | { username: string }) {
+  return request<CheckAccountResponse>(buildUrl(credentials, 'checkAccount'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(query),
+  })
+}
+
 export function sendMessage(credentials: Credentials, chatId: string, message: string) {
   return request<SendMessageResponse>(buildUrl(credentials, 'sendMessage'), {
     method: 'POST',
@@ -68,11 +78,17 @@ export function sendMessage(credentials: Credentials, chatId: string, message: s
 }
 
 /** Long-poll: returns null when the queue stays empty for `receiveTimeout` seconds. */
-export function receiveNotification(credentials: Credentials, receiveTimeout = 20, signal?: AbortSignal) {
-  return request<Notification | null>(
-    buildUrl(credentials, 'receiveNotification', `?receiveTimeout=${receiveTimeout}`),
-    { signal },
-  )
+export async function receiveNotification(credentials: Credentials, receiveTimeout = 20, signal?: AbortSignal) {
+  try {
+    return await request<Notification | null>(
+      buildUrl(credentials, 'receiveNotification', `?receiveTimeout=${receiveTimeout}`),
+      { signal },
+    )
+  } catch (error) {
+    // Telegram instances answer an empty queue with 408 instead of an empty body.
+    if (error instanceof GreenApiError && error.status === 408) return null
+    throw error
+  }
 }
 
 export function deleteNotification(credentials: Credentials, receiptId: number, signal?: AbortSignal) {

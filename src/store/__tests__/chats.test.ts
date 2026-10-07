@@ -55,17 +55,30 @@ describe('parseNotification', () => {
 })
 
 describe('chatsReducer', () => {
-  it('creates a chat by phone and makes it active', () => {
-    const state = chatsReducer(empty(), { type: 'createChat', phone: '79001234567' })
+  it('creates a chat for a resolved Telegram id and makes it active', () => {
+    const state = chatsReducer(empty(), { type: 'createChat', chatId: '10000000', phone: '79001234567' })
     expect(state.chats).toHaveLength(1)
-    expect(state.activeChatId).toBe('79001234567@c.us')
+    expect(state.activeChatId).toBe('10000000')
   })
 
-  it('routes a reply with a Telegram user id into the chat created by phone', () => {
-    let state = chatsReducer(empty(), { type: 'createChat', phone: '79001234567' })
+  it('puts a reply into the chat with the same Telegram id', () => {
+    let state = chatsReducer(empty(), { type: 'createChat', chatId: '10000000', phone: '79001234567' })
+    state = chatsReducer(state, { type: 'received', message: incoming({ phone: undefined }) })
+    expect(state.chats).toHaveLength(1)
+    expect(state.chats[0].messages.at(-1)?.text).toBe('Привет')
+  })
+
+  it('opens the existing chat instead of creating a duplicate', () => {
+    let state = chatsReducer(empty(), { type: 'received', message: incoming() })
+    state = chatsReducer(state, { type: 'createChat', chatId: '10000000', phone: '79001234567' })
+    expect(state.chats).toHaveLength(1)
+    expect(state.activeChatId).toBe('10000000')
+  })
+
+  it('falls back to the phone number when the reply comes from another chatId', () => {
+    let state = chatsReducer(empty(), { type: 'createChat', chatId: '555', phone: '79001234567' })
     state = chatsReducer(state, { type: 'received', message: incoming() })
     expect(state.chats).toHaveLength(1)
-    expect(state.chats[0].messages).toHaveLength(1)
     expect(state.chats[0].aliases).toContain('10000000')
 
     // Next reply without a phone number is matched through the alias.
@@ -73,30 +86,26 @@ describe('chatsReducer', () => {
     expect(state.chats[0].messages).toHaveLength(2)
   })
 
-  it('links the chat through the outgoing API webhook of a sent message', () => {
-    let state = chatsReducer(empty(), { type: 'createChat', phone: '79001234567' })
-    state = chatsReducer(state, { type: 'sendStarted', chatId: '79001234567@c.us', localId: 'l1', text: 'hi' })
-    state = chatsReducer(state, { type: 'sendSucceeded', chatId: '79001234567@c.us', localId: 'l1', idMessage: 'out-1' })
+  it('links a chat through the outgoing API webhook of a sent message', () => {
+    let state = chatsReducer(empty(), { type: 'createChat', chatId: '555', phone: '79001234567' })
+    state = chatsReducer(state, { type: 'sendStarted', chatId: '555', localId: 'l1', text: 'hi' })
+    state = chatsReducer(state, { type: 'sendSucceeded', chatId: '555', localId: 'l1', idMessage: 'out-1' })
     state = chatsReducer(state, {
       type: 'received',
       message: incoming({ direction: 'out', idMessage: 'out-1', phone: undefined, text: 'hi' }),
     })
     expect(state.chats[0].aliases).toContain('10000000')
     expect(state.chats[0].messages).toHaveLength(1)
-
-    state = chatsReducer(state, { type: 'received', message: incoming({ idMessage: 'in-1', phone: undefined }) })
-    expect(state.chats).toHaveLength(1)
-    expect(state.chats[0].messages.at(-1)?.text).toBe('Привет')
   })
 
   it('drops the optimistic copy when the webhook arrived before the send response', () => {
-    let state = chatsReducer(empty(), { type: 'createChat', phone: '79001234567' })
-    state = chatsReducer(state, { type: 'sendStarted', chatId: '79001234567@c.us', localId: 'l1', text: 'hi' })
+    let state = chatsReducer(empty(), { type: 'createChat', chatId: '10000000', phone: '79001234567' })
+    state = chatsReducer(state, { type: 'sendStarted', chatId: '10000000', localId: 'l1', text: 'hi' })
     state = chatsReducer(state, {
       type: 'received',
-      message: incoming({ direction: 'out', chatId: '79001234567@c.us', idMessage: 'out-1', text: 'hi' }),
+      message: incoming({ direction: 'out', chatId: '10000000', idMessage: 'out-1', text: 'hi' }),
     })
-    state = chatsReducer(state, { type: 'sendSucceeded', chatId: '79001234567@c.us', localId: 'l1', idMessage: 'out-1' })
+    state = chatsReducer(state, { type: 'sendSucceeded', chatId: '10000000', localId: 'l1', idMessage: 'out-1' })
     expect(state.chats[0].messages).toHaveLength(1)
   })
 

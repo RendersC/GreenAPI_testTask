@@ -33,7 +33,7 @@ export function isSameDay(a: number, b: number) {
 }
 
 export function chatTitle(chat: Chat) {
-  return chat.title || (chat.phone ? formatPhone(chat.phone) : chat.id)
+  return chat.title || (chat.username ? `@${chat.username}` : chat.phone ? formatPhone(chat.phone) : chat.id)
 }
 
 export function initials(name: string) {

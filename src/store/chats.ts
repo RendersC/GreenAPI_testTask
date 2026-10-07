@@ -1,5 +1,4 @@
 import type { ParsedMessage } from '@/lib/notifications'
-import { phoneToChatId } from '@/lib/phone'
 
 export type MessageStatus = 'sending' | 'sent' | 'failed'
 
@@ -14,11 +13,12 @@ export interface Message {
 }
 
 export interface Chat {
-  /** chatId used for sending: "79001234567@c.us" or a numeric Telegram id. */
+  /** Telegram chatId used for sending (resolved via checkAccount). */
   id: string
   /** Other chatIds GREEN-API uses for the same person (e.g. Telegram user id). */
   aliases: string[]
   phone?: string
+  username?: string
   title?: string
   messages: Message[]
   unread: number
@@ -33,7 +33,7 @@ export interface ChatsState {
 }
 
 export type ChatsAction =
-  | { type: 'createChat'; phone: string }
+  | { type: 'createChat'; chatId: string; phone?: string; username?: string }
   | { type: 'selectChat'; chatId: string | null }
   | { type: 'sendStarted'; chatId: string; localId: string; text: string }
   | { type: 'sendSucceeded'; chatId: string; localId: string; idMessage: string }
@@ -118,16 +118,16 @@ function applyReceived(state: ChatsState, message: ParsedMessage): ChatsState {
 export function chatsReducer(state: ChatsState, action: ChatsAction): ChatsState {
   switch (action.type) {
     case 'createChat': {
-      const id = phoneToChatId(action.phone)
-      const exists = state.chats.some((c) => c.id === id || c.phone === action.phone)
-      const chats = exists
-        ? state.chats
-        : [
-            { id, aliases: [], phone: action.phone, messages: [], unread: 0, updatedAt: Date.now() },
-            ...state.chats,
-          ]
-      const target = chats.find((c) => c.id === id || c.phone === action.phone)!
-      return { ...state, chats, activeChatId: target.id }
+      const { chatId, phone, username } = action
+      const existing = state.chats.find((c) => c.id === chatId || c.aliases.includes(chatId))
+      if (existing) {
+        return {
+          ...updateChat(state, existing.id, (c) => ({ ...c, phone: c.phone ?? phone, username: c.username ?? username })),
+          activeChatId: existing.id,
+        }
+      }
+      const chat: Chat = { id: chatId, aliases: [], phone, username, messages: [], unread: 0, updatedAt: Date.now() }
+      return { ...state, chats: [chat, ...state.chats], activeChatId: chatId }
     }
 
     case 'selectChat':

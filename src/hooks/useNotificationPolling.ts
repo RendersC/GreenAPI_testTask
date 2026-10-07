@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 
-import { deleteNotification, GreenApiError, receiveNotification } from '@/api/greenApi'
+import { deleteNotification, getStateInstance, GreenApiError, receiveNotification } from '@/api/greenApi'
 import { parseNotification, type ParsedMessage } from '@/lib/notifications'
 import type { Credentials } from '@/types/greenApi'
 
@@ -8,6 +8,7 @@ export type PollingStatus = 'connecting' | 'online' | 'offline' | 'unauthorized'
 
 const RECEIVE_TIMEOUT_SEC = 20
 const RETRY_DELAY_MS = 3000
+const MIN_EMPTY_POLL_MS = 1000
 
 function wait(ms: number, signal: AbortSignal) {
   return new Promise<void>((resolve) => {
@@ -41,11 +42,21 @@ export function useNotificationPolling(
 
     async function loop() {
       setStatus('connecting')
+      // A quick state check shows "online" without waiting for the first long-poll.
+      getStateInstance(credentials!, signal)
+        .then(({ stateInstance }) => !signal.aborted && stateInstance === 'authorized' && setStatus('online'))
+        .catch(() => {})
+
       while (!signal.aborted) {
         try {
+          const startedAt = Date.now()
           const notification = await receiveNotification(credentials!, RECEIVE_TIMEOUT_SEC, signal)
           setStatus('online')
-          if (!notification) continue
+          if (!notification) {
+            // Guard against a hot loop if the server returns "empty" right away.
+            if (Date.now() - startedAt < MIN_EMPTY_POLL_MS) await wait(MIN_EMPTY_POLL_MS, signal)
+            continue
+          }
 
           const message = parseNotification(notification.body)
           if (message) onMessageRef.current(message)
