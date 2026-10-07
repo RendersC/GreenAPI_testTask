@@ -117,7 +117,9 @@ export function ChatWindow({ className }: { className?: string }) {
   }
 
   const title = chatTitle(chat)
-  const subtitle = chat.phone && chat.title ? formatPhone(chat.phone) : 'Telegram'
+  // Show the phone under a name or @username; when the phone is the title itself, there is nothing to add.
+  const phone = chat.phone ? formatPhone(chat.phone) : null
+  const subtitle = phone && phone !== title ? phone : 'Telegram'
 
   return (
     <section className={cn('flex min-h-0 flex-col bg-chat', className)}>

@@ -73,7 +73,8 @@ export function NewChatDialog({ trigger }: { trigger: ReactNode }) {
       createChat({
         chatId: account.chatId,
         phone: account.phoneNumber ? String(account.phoneNumber) : 'phoneNumber' in recipient ? String(recipient.phoneNumber) : undefined,
-        username: account.username || undefined,
+        // GREEN-API returns the username with a leading @, the app stores it bare.
+        username: account.username?.replace(/^@/, '') || undefined,
       })
       handleOpenChange(false)
     } catch (err) {

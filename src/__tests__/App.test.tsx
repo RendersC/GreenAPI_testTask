@@ -57,10 +57,10 @@ describe('GREEN-API chat', () => {
     await waitFor(() => expect(api.queue).toHaveLength(0))
   })
 
-  it('creates a chat by @username', async () => {
+  it('creates a chat by @username (case-insensitive, no double @)', async () => {
     const { api, user } = setup({ accounts: [{ chatId: '777', username: 'durov' }] })
     await login(user)
-    await openChat(user, '@durov')
+    await openChat(user, '@Durov')
 
     expect(await screen.findByRole('heading', { name: '@durov' })).toBeInTheDocument()
     await user.type(screen.getByLabelText('Сообщение'), 'Hi{Enter}')

@@ -61,11 +61,11 @@ export function createFakeGreenApi(options: Options = {}) {
         return json({ stateInstance: config.state })
       case 'checkAccount': {
         const account = config.accounts.find(
-          (a) => (body.phoneNumber && a.phoneNumber === body.phoneNumber) || (body.username && `@${a.username}` === body.username),
+          (a) => (body.phoneNumber && a.phoneNumber === body.phoneNumber) || (body.username && `@${a.username}`.toLowerCase() === body.username.toLowerCase()),
         )
         return json(
           account
-            ? { exist: true, chatId: account.chatId, username: account.username ?? '', phoneNumber: account.phoneNumber }
+            ? { exist: true, chatId: account.chatId, username: account.username ? `@${account.username.toLowerCase()}` : '', phoneNumber: account.phoneNumber }
             : { exist: false, chatId: '', username: '', phoneNumber: body.phoneNumber },
         )
       }
