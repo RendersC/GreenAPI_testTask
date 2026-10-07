@@ -6,6 +6,10 @@
 
 **Демо:** https://rendersc.github.io/GreenAPI_testTask/
 
+**Демо-ролик:** вход → чат по `@username` → отправка → ответ получателя из Telegram (реальный инстанс):
+
+![Демо: вход, отправка и получение ответа](docs/demo.gif)
+
 ![Переписка через GREEN-API](docs/screenshots/chat-light.png)
 
 <details>
